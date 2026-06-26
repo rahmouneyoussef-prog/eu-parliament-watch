@@ -87,16 +87,6 @@ GitHub accepte cette planification, mais l'heure exacte d'exécution peut parfoi
 
 Modifier `keywords.txt`, puis commit.
 
-Conseil pour un rapport précis : ajouter la référence du rapport et la référence de procédure, par exemple :
-
-```text
-A10-0177/2026
-2023/0142(NLE)
-Euro-Mediterranean Aviation Agreement
-Morocco
-Western Sahara
-```
-
 
 ## Telegram alert format
 
