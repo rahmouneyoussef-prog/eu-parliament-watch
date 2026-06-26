@@ -632,32 +632,19 @@ def send_telegram_document(path: Path, caption: str) -> None:
         log(f"Telegram sendDocument failed: {r.status_code} {r.text[:200]}")
 
 
-def build_summary(results: list[MatchResult], excel_path: Path) -> str:
-    now = dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    type_counts: dict[str, int] = {}
-    for r in results:
-        type_counts[r.kind] = type_counts.get(r.kind, 0) + 1
-    counts = "\n".join(f"- {k}: {v}" for k, v in sorted(type_counts.items()))
-
-    lines = [
-        "🚨 EU Parliament Watch — nouveaux résultats",
-        f"Date: {now}",
-        f"Nombre de résultats: {len(results)}",
-        "",
-        "Types détectés:",
-        counts or "- aucun",
-        "",
-        "Principaux résultats:",
-    ]
-    for r in results[:MAX_ALERT_ITEMS]:
-        title = r.title.strip() or r.kind
-        if len(title) > 120:
-            title = title[:117] + "…"
-        lines.append(f"\n• {r.kind}\n  {title}\n  Mots-clés: {r.keywords}\n  {r.url}")
-    if len(results) > MAX_ALERT_ITEMS:
-        lines.append(f"\n… et {len(results) - MAX_ALERT_ITEMS} autres dans l'Excel.")
-    lines.append(f"\n📊 Excel: {excel_path.name}")
-    return "\n".join(lines)
+def build_simple_alert(result: MatchResult, excel_path: Path) -> str:
+    """Return the compact Telegram alert format preferred by the user."""
+    excerpt = result.excerpt.strip()
+    if len(excerpt) > 1200:
+        excerpt = excerpt[:1197] + "…"
+    return (
+        "🚨 Alerte Parlement européen\n\n"
+        f"Type: {result.kind}\n"
+        f"Mots-clés: {result.keywords}\n"
+        f"Lien: {result.url}\n\n"
+        f"Extrait: {excerpt}\n\n"
+        f"📊 Export Excel généré: {excel_path}"
+    )
 
 
 def main() -> int:
@@ -712,9 +699,15 @@ def main() -> int:
 
     if results:
         excel_path = create_excel(results)
-        summary = build_summary(results, excel_path)
-        send_telegram_message(summary)
-        send_telegram_document(excel_path, f"EU Parliament Watch — {len(results)} résultat(s)")
+        for result in results[:MAX_ALERT_ITEMS]:
+            send_telegram_message(build_simple_alert(result, excel_path))
+        if len(results) > MAX_ALERT_ITEMS:
+            send_telegram_message(
+                f"🚨 Alerte Parlement européen\n\n"
+                f"{len(results) - MAX_ALERT_ITEMS} autre(s) résultat(s) dans l'Excel.\n"
+                f"📊 Export Excel généré: {excel_path}"
+            )
+        send_telegram_document(excel_path, f"📊 Export Excel généré: {excel_path.name}")
         log(f"Export Excel generated: {excel_path}")
     else:
         log("No new keyword matches found.")

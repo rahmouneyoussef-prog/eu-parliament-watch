@@ -1,4 +1,4 @@
-# EU Parliament Watch — PE full recent coverage
+# EU Parliament Watch — PE full recent coverage + simple alerts
 
 Bot de veille **recent-only** pour le Parlement européen.
 
@@ -96,3 +96,8 @@ Euro-Mediterranean Aviation Agreement
 Morocco
 Western Sahara
 ```
+
+
+## Telegram alert format
+
+This version sends one compact alert per new match, using the format: Type / Mots-clés / Lien / Extrait / Excel. It still attaches the Excel file when matches are found.
