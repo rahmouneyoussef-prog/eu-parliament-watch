@@ -1,10 +1,30 @@
+# Mots-clés principaux
 Morocco
 Maroc
 Western Sahara
 Sahara occidental
+Sahara
 Dakhla
 Laayoune
 El Aaiún
+El Aaiun
 Polisario
 MINURSO
 non-self-governing
+non self governing
+occupied territory
+
+# Sujets UE-Maroc / Sahara occidental
+EU-Morocco
+EU Morocco
+Morocco agreement
+Euro-Mediterranean Aviation Agreement
+fisheries agreement
+agricultural agreement
+preferential tariff
+rules of origin
+
+# Ajoutez ici vos références de rapports ou procédures
+# Exemple :
+# A10-0177/2026
+# 2023/0142(NLE)
