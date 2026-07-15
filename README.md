@@ -1,93 +1,28 @@
-# EU Parliament Watch — PE full recent coverage + simple alerts
+# EU Parliament Watch — robust v2
 
-Bot de veille **recent-only** pour le Parlement européen.
+Recent-only monitoring of European Parliament publications with Telegram alerts.
 
-Objectif : surveiller les publications récentes des principales sources officielles du Parlement européen et envoyer une alerte Telegram lorsque le texte HTML, PDF, XML ou JSON contient un mot-clé défini dans `keywords.txt`.
+## Important fixes in v2
 
-## Important
+- Extracts the **real document title** from the surrounding H3/card, not only the generic “PDF (137 KB)” anchor.
+- Prioritises keyword-bearing titles and direct `RegData`/DOCEO/PDF/XML documents.
+- Raises the candidate limit from 900 to 6000 so late-listed committees such as PETI are not cut off.
+- Sends a title-level alert even when PDF download/text extraction temporarily fails.
+- Does **not** mark failed downloads as seen, so they are retried later.
+- Keeps compact one-document-per-message Telegram alerts and Excel attachment.
 
-Aucun outil externe ne peut garantir absolument 100 % de *tout* le site du Parlement européen, car les documents sont publiés via plusieurs systèmes et certaines pages peuvent changer de structure. Cette version vise la couverture la plus large raisonnable des **publications récentes accessibles publiquement** dans les sources officielles ciblées : plénière, commissions, DOCEO, votes/RCV, registre public, Open Data, think tank et pages de presse.
+## Validation case
 
-## Sources surveillées
+The parser includes a regression test for the PETI page pattern that contains:
 
-### Plénière
-- Agendas
-- Documents de plénière
-- Questions parlementaires
-- Votes et listes de votes
-- Résultats de votes
-- Roll-call votes / RCV, PDF et XML si les liens sont publiés
-- Procès-verbaux
-- Textes adoptés
+`PETI_CM(2026)790891 — impact of the EU-Morocco Association Agreement...`
 
-### Commissions
-Toutes les commissions connues sont incluses : AFET, DROI, SEDE, DEVE, INTA, BUDG, CONT, ECON, FISC, EMPL, ENVI, SANT, ITRE, IMCO, TRAN, REGI, AGRI, PECH, CULT, JURI, LIBE, AFCO, FEMM, PETI, EUDS, HOUS.
+## Install
 
-Pour chaque commission, le bot surveille :
-- documents récents ;
-- recherche documents ;
-- rapports ;
-- projets de rapport ;
-- avis ;
-- projets d'avis ;
-- amendements ;
-- amendements budgétaires ;
-- documents de travail ;
-- agendas ;
-- procès-verbaux ;
-- documents de réunion ;
-- votes en commission.
+Replace these files in the GitHub repository:
 
-### Autres sources PE
-- DOCEO / recent documents
-- Registre public
-- Open Data API, lorsque les endpoints répondent
-- RSS / stay informed
-- Press room
-- Think Tank / research publications
+- `watch.py`
+- `requirements.txt`
+- `README.md`
 
-## Fichiers
-
-- `watch.py` : script principal.
-- `keywords.txt` : mots-clés à surveiller.
-- `requirements.txt` : dépendances Python.
-- `.github/workflows/watch.yml` : exécution automatique toutes les 30 minutes.
-- `data/seen.json` : historique des URL déjà vues, créé automatiquement.
-- `output/*.xlsx` : exports Excel générés automatiquement.
-
-## Telegram
-
-Deux secrets GitHub doivent exister :
-
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
-
-Le bot envoie :
-- un résumé Telegram ;
-- un fichier Excel joint lorsqu'il trouve des résultats.
-
-## Excel
-
-L'Excel contient :
-- onglet `Matches` : tous les résultats ;
-- onglet `Votes_RCV_matches` : sous-ensemble des documents classés comme votes / RCV ;
-- onglet `Readme` : explication des colonnes.
-
-## Fréquence
-
-Le workflow GitHub est configuré ainsi :
-
-```yaml
-cron: "*/30 * * * *"
-```
-
-GitHub accepte cette planification, mais l'heure exacte d'exécution peut parfois être retardée.
-
-## Personnaliser les mots-clés
-
-Modifier `keywords.txt`, puis commit.
-
-
-## Telegram alert format
-
-This version sends one compact alert per new match, using the format: Type / Mots-clés / Lien / Extrait / Excel. It still attaches the Excel file when matches are found.
+Keep your existing `keywords.txt`, secrets, `data/seen.json`, and workflow.

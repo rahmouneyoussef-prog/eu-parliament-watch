@@ -44,7 +44,7 @@ USER_AGENT = (
 )
 
 REQUEST_TIMEOUT = 25
-MAX_CANDIDATES = int(os.getenv("MAX_CANDIDATES", "900"))
+MAX_CANDIDATES = int(os.getenv("MAX_CANDIDATES", "6000"))
 MAX_DOWNLOAD_BYTES = int(os.getenv("MAX_DOWNLOAD_BYTES", str(12 * 1024 * 1024)))
 MAX_TEXT_CHARS = int(os.getenv("MAX_TEXT_CHARS", "300000"))
 MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "80"))
@@ -326,6 +326,36 @@ def url_key(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8", errors="ignore")).hexdigest()[:20]
 
 
+def _contextual_link_title(a: Any) -> str:
+    """Recover the document title around a PDF/DOC link.
+
+    EP committee pages often label the anchor only as “PDF (137 KB)”. The real
+    title is in the nearest preceding H3. Using only anchor text caused notices
+    such as PETI_CM(2026)790891 to be missed even though “EU-Morocco” was in the
+    visible title.
+    """
+    direct = (a.get_text(" ", strip=True) or a.get("title") or "").strip()
+    generic = bool(re.fullmatch(r"(?i)(pdf|docx?|xml|html?)(\s*\([^)]*\))?", direct))
+    if not generic and len(direct) > 20:
+        return direct
+
+    # Prefer the closest previous heading; this matches the current committee
+    # “latest documents” cards where H3 precedes metadata and PDF/DOC links.
+    heading = a.find_previous(["h1", "h2", "h3", "h4", "h5"])
+    if heading:
+        text = heading.get_text(" ", strip=True)
+        if text:
+            return text
+
+    # Fallback to the closest card/list/article container.
+    container = a.find_parent(["article", "li", "section", "div"])
+    if container:
+        text = re.sub(r"\s+", " ", container.get_text(" ", strip=True)).strip()
+        if text:
+            return text[:500]
+    return direct
+
+
 def extract_links_from_html(html: bytes, base_url: str) -> tuple[str, list[Candidate]]:
     soup = BeautifulSoup(html, "lxml")
     title = (soup.title.get_text(" ", strip=True) if soup.title else "").strip()
@@ -334,7 +364,7 @@ def extract_links_from_html(html: bytes, base_url: str) -> tuple[str, list[Candi
         href = normalize_url(a.get("href"), base_url)
         if not href or not looks_interesting(href):
             continue
-        link_title = a.get_text(" ", strip=True) or a.get("title") or ""
+        link_title = _contextual_link_title(a)
         links.append(Candidate(url=href, source=base_url, title=link_title, kind=infer_kind(href, link_title)))
     return title, links
 
@@ -454,7 +484,7 @@ def collect_from_open_data() -> list[Candidate]:
     return candidates
 
 
-def collect_recent_candidates() -> list[Candidate]:
+def collect_recent_candidates(keywords: list[str]) -> list[Candidate]:
     all_candidates: list[Candidate] = []
 
     # 1) Open Data official feeds.
@@ -486,8 +516,15 @@ def collect_recent_candidates() -> list[Candidate]:
             if not c.kind or c.kind == "unknown":
                 c.kind = infer_kind(c.url, c.title)
             dedup[nurl] = c
-    candidates = list(dedup.values())[:MAX_CANDIDATES]
-    log(f"Collected {len(candidates)} unique recent candidates")
+    def priority(c: Candidate) -> tuple[int, int, str]:
+        hay = f"{c.title} {c.url}".lower()
+        title_hit = any(k.lower() in hay for k in keywords)
+        direct_document = bool(re.search(r"(?i)(/RegData/|/doceo/document/|\.(pdf|xml|json|docx?)(?:$|\?))", c.url))
+        # keyword-bearing titles first, then direct documents, then navigation pages
+        return (0 if title_hit else 1, 0 if direct_document else 1, c.url)
+
+    candidates = sorted(dedup.values(), key=priority)[:MAX_CANDIDATES]
+    log(f"Collected {len(candidates)} unique recent candidates (prioritised)")
     return candidates
 
 
@@ -655,7 +692,7 @@ def main() -> int:
 
     seen = load_seen()
     new_seen = set(seen)
-    candidates = collect_recent_candidates()
+    candidates = collect_recent_candidates(keywords)
     results: list[MatchResult] = []
     detected_at = dt.datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
@@ -665,11 +702,13 @@ def main() -> int:
         ukey = "url:" + url_key(cand.url)
         if ukey in seen:
             continue
+        title_combined = "\n".join([cand.title or "", cand.url, cand.kind or ""])
+        title_hits = keyword_hits(title_combined, keywords)
         try:
             if idx % 50 == 0:
                 log(f"Scanning candidate {idx}/{len(candidates)}")
             text, title, chash = fetch_candidate_text(cand)
-            combined = "\n".join([title or "", cand.url, cand.kind or "", text or ""])
+            combined = "\n".join([title or cand.title or "", cand.url, cand.kind or "", text or ""])
             hits = keyword_hits(combined, keywords)
             new_seen.add(ukey)
             if not hits:
@@ -690,11 +729,29 @@ def main() -> int:
             )
             results.append(result)
             log(f"MATCH: {result.kind} {result.keywords} {result.url}")
-            # Be polite to the server.
             time.sleep(REQUEST_DELAY_SECONDS)
         except Exception as exc:
+            # Never mark an inaccessible document as seen: a temporary 403/timeout
+            # must be retried at the next run. If the title itself already matches,
+            # alert immediately because title-level detection is sufficient.
             log(f"Candidate failed: {cand.url}: {exc}")
-            new_seen.add(ukey)
+            if title_hits:
+                chash = text_hash(cand.url + "\n" + (cand.title or ""))
+                ckey = "content:" + chash
+                if ckey not in seen:
+                    new_seen.add(ukey)
+                    new_seen.add(ckey)
+                    results.append(MatchResult(
+                        detected_at_utc=detected_at,
+                        source=cand.source,
+                        kind=infer_kind(cand.url, cand.title),
+                        title=cand.title or cand.url,
+                        url=cand.url,
+                        keywords=", ".join(title_hits),
+                        excerpt=make_excerpt(title_combined, title_hits),
+                        content_hash=chash,
+                        status="title match; content fetch failed",
+                    ))
             continue
 
     if results:
